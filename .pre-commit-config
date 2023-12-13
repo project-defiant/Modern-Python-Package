@@ -1,0 +1,27 @@
+repos:
+  - repo: local
+    hooks:
+      - id: format
+        name: format
+        entry: hatch run fmt
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: lint
+        name: linter
+        entry: hatch run style
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: annotations
+        name: typing
+        entry: hatch run typing
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: test
+        name: tests
+        entry: hatch run test
+        language: system
+        types: [python]
+        pass_filenames: false
