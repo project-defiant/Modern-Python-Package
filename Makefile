@@ -1,57 +1,55 @@
-# setup environment
-VERSION:=1.0.0
-PACKAGE:="ModernPythonPackage"
-VIRTUAL_ENV:=".venv"
-
+.PHONY: help
 .ONESHELL:
-# command for installing package in editable mode
-install:
-	python -m venv $(VIRTUAL_ENV)
-	. .$(VIRTUAL_ENV)/bin/activate
-	python -m pip install --upgrade pip
-	python -m pip install --upgrade setuptools wheel 
-	python -m pip install -e .[dev]
+PACKAGE := template
+VERSION := $(shell grep -e '^__version__\s*=\s*".*"'  'src/ptolemy/__init__.py' | sed 's%^__version__\s*=\s*"\(.*\)"%\1%g')
+CONTAINER_REGISTRY := ghcr.io
+CONTAINER_REPO := project-defiant
+IMAGE := $(CONTAINER_REGISTRY)/$(CONTAINER_REPO)/$(PACKAGE):$(VERSION)
+default: help
 
-# command for cleaning the build directory
-clean:
-	rm -rf $(VIRTUAL_ENV)
-	rm -rf build
-	rm -rf docker/dist
-	rm -rf *.egg-info
+version: ## Display current version of the package
+	@printf "template version: %s\n" $(VERSION)
 
-# typecheck with mypy
-typecheck:
-	. .$(VIRTUAL_ENV)/bin/activate
-	mypy
+install: ## Install package within isolated environement locally with hatch
+	@hatch env create
 
-# format with black
-prettify:
-	. .$(VIRTUAL_ENV)/bin/activate
-	black $(PACKAGE) .
+test-full: ## Run tests with coverage report with pytest
+	@hatch run cov
 
-# lint with flake8
-lint:
-	. .$(VIRTUAL_ENV)/bin/activate
-	flake8 $(PACKAGE)
+test: ## Run tests with pytest
+	@hatch run test
 
-# test with pytest
-test:
-	. .$(VIRTUAL_ENV)/bin/activate
-	pytest -vv
+fmt: ## Format with ruff and black
+	@hatch run fmt
 
-# test only last failed tests
-test-failed:
-	. .$(VIRTUAL_ENV)/bin/activate
-	pytest -vv --lf
+lint: ## Lint code styling with ruff and black
+	@hatch run style
 
-# create a distribution package
-distribute: prettify typecheck lint test clean install 
-	. .$(VIRTUAL_ENV)/bin/activate
-	python -m pip install --upgrade build
-	python -m build --outdir docker/dist
-	sed -i '/ARG VERSION=/c\ARG VERSION=$(VERSION)' Docker/Dockerfile
+typing: ## Check type annotations with mypy
+	@hatch run typing
 
-# build the docker image
-build: distribute
-	. .$(VIRTUAL_ENV)/bin/activate
-	docker build -t $PACKAGE:$(VERSION) docker/.
+clean: ## Clean the environment
+	@hatch env prune
+
+distribute: install ## Create a distribution package
+	@hatch build
+
+docker-build: distribute  ## Create docker image with image
+	@docker build --build-arg VERSION=$(VERSION) . -t $(IMAGE) -f docker/Dockerfile
+
+docker-push: docker-build ## Push image to registry
+	@docker push $(IMAGE)
+
+all: install fmt test lint typing ## Run all utilities before commit
+
+release: ## Release pkg
+	git pull
+	git tag -a $(VERSION) -m "version $(VERSION)"
+	git tag --delete latest
+	git tag -a latest -m "latest version"
+	git push --delete origin latest
+	git push --tags
+
+
+help: # Show help for each of the Makefile recipes.
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m\033[0m\n"} /^[$$()% a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
